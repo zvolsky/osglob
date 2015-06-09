@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-'''Python file operations with pathname pattern expansion (os/shutil together with glob)
+'''File operations with pathname pattern expansion (remove, move and copy functionality of os and shutil together with glob)
+List of files/content (as os.listdir) filtered by pattern.
+Directories operations without error raising for existing/non-existing directories (mkdir, makedirs, rmdir, removedirs)
 
 os.remove -> osglob.remove ...
   Example: osglob.remove('*.pyc')
@@ -9,7 +11,8 @@ less exceptions reported
 
 Same as in glob: pattern '*' doesn't affect '.*' files.
 Use osglob.<function>('.*' [, ...]) to work with '.*' files only.
-#TODO to be deleted later?  Use osglob.total.<function>('*' [, ...]) to work with '.*' files too.
+Use osglob.files.<function>(...) to work with all files include '.*' files.
+Use osglob.content.<function>(...) to work with all sub-directories and all files include '.*' files.
 
 Hint for Windows users: '*' means all files, '*.*' means files with extension.
 '''
@@ -17,14 +20,22 @@ Hint for Windows users: '*' means all files, '*.*' means files with extension.
 
 import glob
 import os
+import shutil
 
-# total = Total()    # defined bellow the Total class definition
+# files = Files()       # defined bellow the Files class definition
+# content = Content()   # defined bellow the Content class definition
 
+
+def listdir(pattern):
+    pass
 
 def mkdir(path, *args, **kwargs):
     '''create a directory
     raises no error if directory already exists (however 'mode' parameter is ignored)
-    optional parameter purge=True will remove all files from directory if it already exists
+    optional parameter purge (str or bool):
+        True or 'content' will remove whole content of the directory if it already exists
+        False or 'files' will remove all files from directory if it already exists
+        None (or not used purge parameter) will do nothing with the content of the directory
     other parameters (i.e. 'mode' as positional or named) will be used for os.mkdir()
     '''
 
@@ -33,7 +44,10 @@ def mkdir(path, *args, **kwargs):
 def makedirs(path, *args, **kwargs):
     '''create a directory chain
     raises no error if directory exists already (however 'mode' parameter is ignored)
-    optional parameter purge=True will remove all files from directory if it already exists
+    optional parameter purge (str or bool):
+        True or 'content' will remove whole content of the directory if it already exists
+        False or 'files' will remove all files from directory if it already exists
+        None (or not used purge parameter) will do nothing with the content of the directory
     other parameters (i.e. 'mode' as positional or named) will be used for os.mkdir()
     '''
 
@@ -82,7 +96,8 @@ def remove(pattern):
     '''
 
     path = os.path.dirname(pattern)
-    _testdir(path)
+    if path and not os.path.isdir(path):
+        _nosuchdir(path)
     ok = True
     for filename in filter(lambda candidate: os.path.isfile(candidate), glob.iglob(pattern)):
         try:
@@ -91,42 +106,77 @@ def remove(pattern):
             ok = False
     return ok
 
-def purge(path=''):
-    '''purge(path) - delete files include hidden files (.*) in given directory
-    purge() - delete files include hidden files (.*) in current working directory
-    '''
 
-    _testdir(path)
-    ok = remove(os.path.join(path, '.*'))
-    return remove(os.path.join(path, '*')) and ok
-
-#TODO maybe to be deleted later - start here //remove total=Total(), #total=Total() above, total.xx in module.__doc__
-class Total(object):
-    '''accesible as osglob.total
-    osglob.total.functions behaves as osglob.functions but pattern=='*' will affect '.*' files too
+class Files(object):
+    '''accesible as osglob.files
+    osglob.files.functions behaves as osglob.functions but affect '*'+'.*' files, i.e. all files (but not sub-directories)
     '''
 
     def __init__(self):
-        self.cls_remove = remove
+        self.module_root_remove = remove
 
-    def remove(self, path=''):
-        '''total.remove(path) - delete files include hidden files (.*) in given directory
-        total.remove() - delete files include hidden files (.*) in current working directory
+    def remove(self, path):
+        '''files.remove(path) - delete files include hidden files (.*) in given directory
+        the path directory will stay without files (but with sub-directories)
+        '.' and '..' are allowed for path
         '''
 
         _testdir(path)
-        ok = self.cls_remove(os.path.join(path, '.*'))
-        return self.cls_remove(os.path.join(path, '*')) and ok
-total = Total()
-# maybe to be deleted later - stop here
+        ok = self.module_root_remove(os.path.join(path, '.*'))
+        return self.module_root_remove(os.path.join(path, '*')) and ok
+
+files = Files()
+
+class Content(object):
+    '''accesible as osglob.content
+    osglob.content.functions behaves as osglob.functions but affect '*'+'.*'+directories, i.e. whole directory content
+    '''
+
+    def remove(self, path):
+        '''content.remove(path) - delete sub-directories and files include hidden files (.*) in given directory
+        the path directory will stay empty
+        '.' is allowed for path
+        '''
+
+        _testdir_noparent(path)
+        ok = True
+        for itemname in os.listdir(path):
+            fullname = os.path.join(path, itemname)
+            if os.path.isdir(fullname):
+                try:
+                    shutil.rmtree(fullname)
+                except:
+                    ok = False
+                    self.remove(fullname)  # delete what is possible
+            else:
+                try:
+                    os.remove(fullname)
+                except:
+                    ok = False
+        return ok
+
+content = Content()
+
 
 def _testdir(path):
-    if path and not os.path.isdir(path):
-        raise OSError, "No such directory: '%s'" % path
+    if not os.path.isdir(path):
+        _nosuchdir(path)
+
+def _testdir_noparent(path):
+    _testdir(path)
+    if path == '..' or os.getcwd().startswith(path) and len(path) < len(os.getcwd()):
+        raise OSError, "Parent directory is not allowed here: '%s'" % path
+
+def _nosuchdir(path):
+    raise OSError, "No such directory: '%s'" % path
 
 def _mkdir(mkfunc, path, *args, **kwargs):
-    purge_it = kwargs.pop('purge', False)
+    purge_mode = kwargs.pop('purge', None)
     if not os.path.isdir(path):
         mkfunc(path, *args, **kwargs)
-    elif purge_it:
-        purge(path)
+    elif purge_mode is not None:
+        purge_mode = {False: False, 'files': False, True: True, 'content': True}[purge_mode]
+        if purge_mode:
+            os.content.remove(path)
+        else:
+            os.files.remove(path)
