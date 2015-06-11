@@ -21,6 +21,7 @@ Hint for Windows users: '*' means all files, '*.*' means files with extension.
 import glob
 import os
 import shutil
+import stat
 
 # files = Files()       # defined bellow the Files class definition
 # content = Content()   # defined bellow the Content class definition
@@ -138,13 +139,23 @@ class Content(object):
         '.' is allowed for path
         '''
 
+        def query_raise(func, path, exc_info):
+            '''If the error is due to an access error (read only file)
+            it attempts to add write permission and then retries.
+            '''
+            if not os.access(path, os.W_OK):  # is the error an access error?
+                os.chmod(path, stat.S_IWUSR)
+                func(path)
+            else:
+                raise
+
         _testdir_noparent(path)
         ok = True
         for itemname in os.listdir(path):
             fullname = os.path.join(path, itemname)
             if os.path.isdir(fullname):
                 try:
-                    shutil.rmtree(fullname)
+                    shutil.rmtree(fullname, onerror=query_raise)
                 except:
                     ok = False
                     self.remove(fullname)  # delete what is possible
