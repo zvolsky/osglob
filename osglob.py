@@ -26,8 +26,81 @@ import shutil
 # content = Content()   # defined bellow the Content class definition
 
 
-def listdir(pattern):
-    pass
+def expandpath(pattern):
+    '''return the file/path name with expanded '.', '..', '~' and as absolute path
+    pattern can contain file mask (glob pattern)
+    '''
+    return os.path.abspath(os.path.expanduser(pattern))
+
+def justpath(pattern, expanded=True):
+    '''return path portion of file/path name
+    pattern can contain file mask (glob pattern)
+    note: this makes test for directory presence: if pattern is existing directory then path is same as pattern (no name splitting applies)
+      i.e. for existing directory entry both /entry and /entry/ are treated as directory name
+      but for non-existing directory entry /entry/ is treated as directory name, but /entry as filename
+    default behaviour is conversion to absolute path with expanded '.', '..', '~'; to avoid absolute path and expansion use: expanded=False
+      expanded=None works like expanded=False, but will return '' instead of '.' if no path is given
+    '''
+    if os.path.isdir(pattern):
+        path = pattern
+    else:
+        path = os.path.dirname(pattern)
+    if expanded is None:
+        return os.path.normpath(path) if path else ''
+    elif expanded:
+        return os.path.abspath(path)
+    else:
+        return os.path.normpath(path)
+
+def justname(pattern):
+    '''return filename portion of file/path name (with expanded '.', '..', '~' and as absolute path)
+    pattern can contain file mask (glob pattern)
+    note: this makes test for directory presence: if pattern is existing directory then filename is empty (no name splitting applies)
+      i.e. for existing directory entry both /entry and /entry/ are treated as directory name
+      but for non-existing directory entry /entry/ is treated as directory name, but /entry as filename
+    '''
+    if os.path.isdir(pattern):
+        return ''
+    else:
+        return os.path.basename(pattern)
+
+def juststem(pattern):
+    '''return filename stem portion (filename without extension) of file/path name
+    pattern can contain file mask (glob pattern)
+    note: this makes test for directory presence: if pattern is existing directory then stem is empty (no name splitting applies)
+      i.e. for existing directory entry both /entry and /entry/ are treated as directory name
+      but for non-existing directory entry /entry/ is treated as directory name, but /entry as stem of the filename
+    '''
+    return justname(os.path.splitext(pattern)[0])
+
+def justext(pattern):
+    '''return filename extension of file/path name
+    pattern can contain file mask (glob pattern)
+    '''
+    return os.path.splitext(pattern)[1][1:]
+
+def listdir(pattern='.', expanded=False):
+    '''list of entries (files and dirs) in directory, pattern can contain path and mask (glob pattern)
+    expanded=False : name without path are returned (this is default)
+    expanded=True : full pathnames are returned
+    expanded=None : names from raw underlying function are returned (this is howwever inconsistent between os.listdir and glob.glob)
+    '''
+    if os.path.isdir(pattern):
+        entries = os.listdir(pattern)
+        if expanded:
+            path = justpath(pattern)
+            entries = [expandpath(os.path.join(path, entry)) for entry in entries]
+    else:
+        path = os.path.dirname(pattern)
+        if path and not os.path.isdir(path):
+            _nosuchdir(path)
+        entries = glob.glob(pattern)
+        if expanded is not None:
+            if expanded:
+                entries = [expandpath(entry) for entry in entries]
+            else:
+                entries = [os.path.basename(entry) for entry in entries]
+    return entries
 
 def mkdir(path, *args, **kwargs):
     '''create a directory
@@ -80,7 +153,7 @@ def removedirs(path, root='', silent=False):
 
     if rmdir(os.path.join(root, path), silent=silent):
         while os.sep in path:
-            path = path.rsplit(os.sep, 1)[0]
+            path = justpath(path)
             try:
                 rmdir(os.path.join(root, path))
             except OSError:
@@ -164,7 +237,7 @@ def _testdir(path):
 
 def _testdir_noparent(path):
     _testdir(path)
-    if path == '..' or os.getcwd().startswith(path) and len(path) < len(os.getcwd()):
+    if path == os.pardir or os.getcwd().startswith(path) and len(path) < len(os.getcwd()):
         raise OSError, "Parent directory is not allowed here: '%s'" % path
 
 def _nosuchdir(path):
