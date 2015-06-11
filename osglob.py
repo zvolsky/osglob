@@ -103,6 +103,37 @@ def listdir(pattern='.', expanded=False):
                 entries = [os.path.basename(entry) for entry in entries]
     return entries
 
+def listdirectories(pattern='.', expanded=False, listdir_result=None):
+    '''list of sub-directories (filtered by mask from pattern) in directory (current or with path given from pattern)
+    pattern: mask for directory names
+        .* or ends with /.* ..(linux)hidden directories
+        * or ends with /*   ..(linux)nonhidden directories
+        ends with /         ..all directories
+        default: all directories in current working dir
+    expanded: with or without(default) full path (see listdir for details)
+    listdir_result [rare required]: result from previous listdir(pattern, expanded) call
+        this will prevent additional unnecessary listdir() calls in consecutive calls of directories()/files()/links()
+    '''
+    return _filtered_by_type(os.path.isdir, pattern, expanded, listdir_result)
+
+def listfiles(pattern='.', expanded=False, listdir_result=None):
+    '''list of files (filtered by mask from pattern) in directory (current or with path given from pattern)
+    pattern: mask for file names
+        .* or ends with /.* ..(linux)hidden files
+        * or ends with /*   ..(linux)nonhidden files
+        ends with /         ..all files
+        default: all files in current working dir
+    expanded: with or without(default) full path (see listdir for details)
+    listdir_result [rare required]: result from previous listdir(pattern, expanded) call
+        this will prevent additional unnecessary listdir() calls in consecutive calls of directories()/files()/links()
+    '''
+    return _filtered_by_type(os.path.isfile, pattern, expanded, listdir_result)
+
+def listlinks(pattern='.', expanded=False, listdir_result=None):
+    '''list of links - for parameters see directories() or files()
+    '''
+    return _filtered_by_type(os.path.islink, pattern, expanded, listdir_result)
+
 def mkdir(path, *args, **kwargs):
     '''create a directory
     raises no error if directory already exists (however 'mode' parameter is ignored)
@@ -264,3 +295,7 @@ def _mkdir(mkfunc, path, *args, **kwargs):
             os.content.remove(path)
         else:
             os.files.remove(path)
+
+def _filtered_by_type(filter_func, pattern, expanded, listdir_result):
+    return filter(lambda candidate: filter_func(os.path.abspath(os.path.join(justpath(pattern), candidate))),
+                  listdir_result or listdir(pattern, expanded))
