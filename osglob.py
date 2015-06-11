@@ -243,12 +243,12 @@ class Content(object):
         '.' is allowed for path
         '''
 
-        def query_raise(func, path, exc_info):
+        def try_make_rw(func, path, exc):
             '''If the error is due to an access error (read only file)
             it attempts to add write permission and then retries.
             '''
             if not os.access(path, os.W_OK):  # is the error an access error?
-                os.chmod(path, stat.S_IWUSR)
+                os.chmod(path, stat.S_IWRITE)
                 func(path)
             else:
                 raise
@@ -259,7 +259,7 @@ class Content(object):
             fullname = os.path.join(path, itemname)
             if os.path.isdir(fullname):
                 try:
-                    shutil.rmtree(fullname, onerror=query_raise)
+                    shutil.rmtree(fullname, onerror=try_make_rw)
                 except:
                     ok = False
                     self.remove(fullname)  # delete what is possible
